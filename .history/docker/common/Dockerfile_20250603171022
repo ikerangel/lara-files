@@ -1,0 +1,107 @@
+# syntax=docker/dockerfile:1
+
+#######################################################################
+# Stage 1 – builder: PHP extensions + Composer + vendor/ install      #
+#######################################################################
+FROM php:8.3-apache AS builder
+
+ARG DEBIAN_FRONTEND=noninteractive
+
+# Install necessary system dependencies and PHP extensions for SQLite support
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        git unzip curl libsqlite3-dev \
+    && docker-php-ext-install pdo_sqlite \
+    && a2enmod rewrite \
+    && apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+
+WORKDIR /var/www
+
+# Copy the entire Laravel application code into the container
+# -----------------------------------------------------------
+# In Laravel, the `composer install` command often triggers
+# scripts that need access to the entire application code.
+# For example, the `post-autoload-dump` event might execute
+# Artisan commands like `php artisan package:discover`. If the
+# application code (including the `artisan` file) is not
+# present, these commands will fail, leading to build errors.
+#
+# By copying the entire application code before running
+# `composer install`, we ensure that all necessary files are
+# available, allowing these scripts to run successfully.
+# In other cases, it would be possible to copy composer files
+# first, to leverage Docker's layer caching mechanism.
+# -----------------------------------------------------------
+COPY . /var/www
+
+# Install Composer + dependencies
+RUN curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer \
+    && composer install --no-dev --optimize-autoloader --prefer-dist
+
+#######################################################################
+# Stage 2 – production: Secure Apache + PHP + App Code               #
+#######################################################################
+FROM php:8.3-apache AS production
+
+ARG DEBIAN_FRONTEND=noninteractive
+ARG UID=1000
+ARG GID=33
+ARG USER_NAME=isl
+ARG GROUP_NAME=www-data
+
+# Install runtime dependencies only
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libsqlite3-dev \
+    && docker-php-ext-install pdo_sqlite \
+    && a2enmod rewrite \
+    && apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+
+# Create restricted user using arguments
+RUN mkdir -p /home/${USER_NAME} && \
+    addgroup --gid ${GID} ${GROUP_NAME} && \
+    adduser --uid ${UID} --gid ${GID} --system --disabled-password --home /home/${USER_NAME} ${USER_NAME} && \
+    chown -R ${USER_NAME}:${GROUP_NAME} /home/${USER_NAME} && \
+    chsh -s /sbin/nologin ${USER_NAME}
+
+# Apache configuration
+COPY docker/apache.conf /etc/apache2/sites-available/000-default.conf
+
+# Copy application code WITHOUT Composer
+COPY --from=builder /var/www /var/www
+
+# Production entrypoint
+COPY docker/common/entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN sed -i 's/\r$//' /usr/local/bin/entrypoint.sh && \
+    chmod +x /usr/local/bin/entrypoint.sh
+
+# Security-focused permissions using arguments
+RUN chown -R ${USER_NAME}:${GROUP_NAME} /var/www && \
+    find /var/www -type d -exec chmod 755 {} \; && \
+    find /var/www -type f -exec chmod 644 {} \; && \
+    chmod -R 775 /var/www/storage /var/www/bootstrap/cache
+
+WORKDIR /var/www
+EXPOSE 80
+USER ${USER_NAME}
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
+CMD ["apache2-foreground"]
+
+#######################################################################
+# Stage 3 – development: Production base + Dev tools                 #
+#######################################################################
+FROM production AS development
+
+# Install development tools
+USER root
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git unzip \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# Copy Composer from builder
+COPY --from=builder /usr/local/bin/composer /usr/local/bin/composer
+
+# Development entrypoint
+COPY docker/development/entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN sed -i 's/\r$//' /usr/local/bin/entrypoint.sh && \
+    chmod +x /usr/local/bin/entrypoint.sh
+
+USER ${USER_NAME}
