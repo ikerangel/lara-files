@@ -56,8 +56,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
 # Create restricted user using arguments
-RUN mkdir -p /home/${USER_NAME} && \
-    addgroup --gid ${GID} ${GROUP_NAME} && \
+RUN if ! getent group ${GID} >/dev/null; then \
+        addgroup --gid ${GID} ${GROUP_NAME}; \
+    else \
+        existing_group=$(getent group ${GID} | cut -d: -f1); \
+        if [ "$existing_group" != "${GROUP_NAME}" ]; then \
+            groupmod -n ${GROUP_NAME} ${existing_group}; \
+        fi; \
+    fi && \
+    mkdir -p /home/${USER_NAME} && \
     adduser --uid ${UID} --gid ${GID} --system --disabled-password --home /home/${USER_NAME} ${USER_NAME} && \
     chown -R ${USER_NAME}:${GROUP_NAME} /home/${USER_NAME} && \
     chsh -s /sbin/nologin ${USER_NAME}
