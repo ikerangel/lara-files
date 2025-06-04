@@ -15,7 +15,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && a2enmod rewrite \
     && apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
-# Build inotify from source
+# Build inotify from source (proper implementation)
 RUN cd /tmp && \
     git clone https://github.com/arnaud-lb/php-inotify.git && \
     cd php-inotify && \
@@ -25,8 +25,12 @@ RUN cd /tmp && \
     make install && \
     cp modules/inotify.so /tmp/inotify.so
 
-# Copy pdo_sqlite extension
-RUN cp $(php -r "echo ini_get('extension_dir');")/pdo_sqlite.so /tmp/pdo_sqlite.so
+# Create inotify config file
+RUN PHP_INI_PATH=$(php -i | grep "Scan this dir for additional .ini files" | sed -n 's/.*=> \(.*\)/\1/p' | head -n 1) \
+    && echo "extension=inotify.so" > "$PHP_INI_PATH/inotify.ini"
+
+# Verify inotify installation in builder
+RUN php -m | grep inotify
 
 WORKDIR /var/www
 
@@ -53,16 +57,15 @@ ARG GROUP_NAME=www-data
 
 # Install runtime dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        libsqlite3-0 inotify-tools \
+        libsqlite3-0 inotify-tools libinotifytools0 \
     && apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
-# Enable pre-built extensions
-COPY --from=builder /tmp/pdo_sqlite.so /tmp/inotify.so /tmp/
-RUN PHP_INI_PATH=$(php -i | grep "Scan this dir for additional .ini files" | cut -d ">" -f2 | xargs) \
-    && mv /tmp/pdo_sqlite.so $(php -r "echo ini_get('extension_dir');")/pdo_sqlite.so \
-    && mv /tmp/inotify.so $(php -r "echo ini_get('extension_dir');")/inotify.so \
-    && echo "extension=pdo_sqlite.so" > "$PHP_INI_PATH/pdo_sqlite.ini" \
-    && echo "extension=inotify.so" > "$PHP_INI_PATH/inotify.ini"
+# Enable pre-built inotify extension
+COPY --from=builder /tmp/inotify.so /usr/local/lib/php/extensions/no-debug-non-zts-20230831/inotify.so
+COPY --from=builder /usr/local/etc/php/conf.d/inotify.ini /usr/local/etc/php/conf.d/inotify.ini
+
+# Verify inotify installation in production
+RUN php -m | grep inotify
 
 # Create restricted user
 RUN if ! getent group ${GID} >/dev/null; then \
@@ -112,6 +115,9 @@ RUN apt-get update && \
     apt-get purge -y --auto-remove -o APT::AutoRemove::RecommendsImportant=false curl gnupg && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
+# Verify Node.js installation
+RUN node -v && npm -v
+
 # Copy Composer from builder
 COPY --from=builder /usr/local/bin/composer /usr/local/bin/composer
 
@@ -119,5 +125,8 @@ COPY --from=builder /usr/local/bin/composer /usr/local/bin/composer
 COPY docker/development/entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN sed -i 's/\r$//' /usr/local/bin/entrypoint.sh && \
     chmod +x /usr/local/bin/entrypoint.sh
+
+# Verify inotify installation in development
+RUN php -m | grep inotify
 
 USER ${USER_NAME}
