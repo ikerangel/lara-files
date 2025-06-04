@@ -7,32 +7,25 @@ FROM php:8.3-apache AS builder
 
 ARG DEBIAN_FRONTEND=noninteractive
 
-# Install necessary system dependencies and PHP extensions for SQLite support
+# Install system dependencies and build tools
 RUN apt-get update && apt-get install -y --no-install-recommends \
         git unzip curl libsqlite3-dev inotify-tools \
+        build-essential autoconf libinotifytools0-dev \
     && docker-php-ext-install pdo_sqlite \
-    && pecl install inotify \
-    && docker-php-ext-enable inotify \
     && a2enmod rewrite \
     && apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
-WORKDIR /var/www
+# Build inotify from source
+RUN cd /tmp && \
+    git clone https://github.com/arnaud-lb/php-inotify.git && \
+    cd php-inotify && \
+    phpize && \
+    ./configure && \
+    make && \
+    make install && \
+    cp modules/inotify.so /tmp/inotify.so
 
-# Copy the entire Laravel application code into the container
-# -----------------------------------------------------------
-# In Laravel, the `composer install` command often triggers
-# scripts that need access to the entire application code.
-# For example, the `post-autoload-dump` event might execute
-# Artisan commands like `php artisan package:discover`. If the
-# application code (including the `artisan` file) is not
-# present, these commands will fail, leading to build errors.
-#
-# By copying the entire application code before running
-# `composer install`, we ensure that all necessary files are
-# available, allowing these scripts to run successfully.
-# In other cases, it would be possible to copy composer files
-# first, to leverage Docker's layer caching mechanism.
-# -----------------------------------------------------------
+WORKDIR /var/www
 COPY . /var/www
 
 # Install Composer + dependencies
@@ -50,16 +43,20 @@ ARG GID=33
 ARG USER_NAME=isl
 ARG GROUP_NAME=www-data
 
-# Install runtime dependencies only
+# Install runtime dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    libsqlite3-dev inotify-tools \
+        libsqlite3-0 inotify-tools \
     && docker-php-ext-install pdo_sqlite \
-    && pecl install inotify \
-    && docker-php-ext-enable inotify \
-    && a2enmod rewrite \
+    && apt-get purge -y --auto-remove -o APT::AutoRemove::RecommendsImportant=false libsqlite3-dev \
     && apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
-# Create restricted user using arguments
+# Enable pre-built inotify extension
+COPY --from=builder /tmp/inotify.so /tmp/inotify.so
+RUN PHP_INI_PATH=$(php -i | grep "Scan this dir for additional .ini files" | cut -d ">" -f2 | xargs) \
+    && mv /tmp/inotify.so $(php -r "echo ini_get('extension_dir');")/inotify.so \
+    && echo "extension=inotify.so" > "$PHP_INI_PATH/inotify.ini"
+
+# Create restricted user
 RUN if ! getent group ${GID} >/dev/null; then \
         addgroup --gid ${GID} ${GROUP_NAME}; \
     else \
@@ -76,7 +73,7 @@ RUN if ! getent group ${GID} >/dev/null; then \
 # Apache configuration
 COPY docker/apache.conf /etc/apache2/sites-available/000-default.conf
 
-# Copy application code WITHOUT Composer
+# Copy application code
 COPY --from=builder /var/www /var/www
 
 # Production entrypoint
@@ -84,7 +81,7 @@ COPY docker/common/entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN sed -i 's/\r$//' /usr/local/bin/entrypoint.sh && \
     chmod +x /usr/local/bin/entrypoint.sh
 
-# Security-focused permissions using arguments
+# Set permissions
 RUN chown -R ${USER_NAME}:${GROUP_NAME} /var/www && \
     find /var/www -type d -exec chmod 755 {} \; && \
     find /var/www -type f -exec chmod 644 {} \; && \
@@ -101,11 +98,14 @@ CMD ["apache2-foreground"]
 #######################################################################
 FROM production AS development
 
-# Install development tools
+# Install development tools and Node.js
 USER root
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    git unzip \
-    && apt-get clean && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends git unzip curl gnupg && \
+    curl -sL https://deb.nodesource.com/setup_18.x | bash - && \
+    apt-get install -y nodejs && \
+    apt-get purge -y --auto-remove -o APT::AutoRemove::RecommendsImportant=false curl gnupg && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Copy Composer from builder
 COPY --from=builder /usr/local/bin/composer /usr/local/bin/composer
