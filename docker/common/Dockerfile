@@ -15,7 +15,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && a2enmod rewrite \
     && apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
-# Build inotify from source (proper implementation)
+# Build inotify from source
 RUN cd /tmp && \
     git clone https://github.com/arnaud-lb/php-inotify.git && \
     cd php-inotify && \
@@ -45,7 +45,7 @@ RUN curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local
 RUN chmod -R 775 storage bootstrap/cache
 
 #######################################################################
-# Stage 2 – production: Secure Apache + PHP + App Code               #
+# Stage 2 – production: Secure Apache + PHP + App Code + Node.js     #
 #######################################################################
 FROM php:8.3-apache AS production
 
@@ -55,17 +55,22 @@ ARG GID=33
 ARG USER_NAME=isl
 ARG GROUP_NAME=www-data
 
-# Install runtime dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
+# Install runtime dependencies and Node.js
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
         libsqlite3-0 inotify-tools libinotifytools0 \
-    && apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+        curl gnupg && \
+    curl -sL https://deb.nodesource.com/setup_18.x | bash - && \
+    apt-get install -y nodejs && \
+    apt-get purge -y --auto-remove -o APT::AutoRemove::RecommendsImportant=false && \
+    apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
 # Enable pre-built inotify extension
 COPY --from=builder /tmp/inotify.so /usr/local/lib/php/extensions/no-debug-non-zts-20230831/inotify.so
 COPY --from=builder /usr/local/etc/php/conf.d/inotify.ini /usr/local/etc/php/conf.d/inotify.ini
 
-# Verify inotify installation in production
-RUN php -m | grep inotify
+# Verify installations
+RUN php -m | grep inotify && node -v
 
 # Create restricted user
 RUN if ! getent group ${GID} >/dev/null; then \
@@ -106,17 +111,11 @@ CMD ["apache2-foreground"]
 #######################################################################
 FROM production AS development
 
-# Install development tools and Node.js
+# Install additional development tools
 USER root
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends git unzip curl gnupg && \
-    curl -sL https://deb.nodesource.com/setup_18.x | bash - && \
-    apt-get install -y nodejs && \
-    apt-get purge -y --auto-remove -o APT::AutoRemove::RecommendsImportant=false curl gnupg && \
+    apt-get install -y --no-install-recommends git unzip && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
-
-# Verify Node.js installation
-RUN node -v && npm -v
 
 # Copy Composer from builder
 COPY --from=builder /usr/local/bin/composer /usr/local/bin/composer
@@ -125,8 +124,5 @@ COPY --from=builder /usr/local/bin/composer /usr/local/bin/composer
 COPY docker/development/entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN sed -i 's/\r$//' /usr/local/bin/entrypoint.sh && \
     chmod +x /usr/local/bin/entrypoint.sh
-
-# Verify inotify installation in development
-RUN php -m | grep inotify
 
 USER ${USER_NAME}
