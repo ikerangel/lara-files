@@ -11,6 +11,8 @@ ARG DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
         git unzip curl libsqlite3-dev inotify-tools \
     && docker-php-ext-install pdo_sqlite \
+    && pecl install inotify \
+    && docker-php-ext-enable inotify \
     && a2enmod rewrite \
     && apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
@@ -52,6 +54,8 @@ ARG GROUP_NAME=www-data
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libsqlite3-dev inotify-tools \
     && docker-php-ext-install pdo_sqlite \
+    && pecl install inotify \
+    && docker-php-ext-enable inotify \
     && a2enmod rewrite \
     && apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
