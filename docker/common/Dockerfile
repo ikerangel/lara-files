@@ -25,6 +25,9 @@ RUN cd /tmp && \
     make install && \
     cp modules/inotify.so /tmp/inotify.so
 
+# Copy pdo_sqlite extension
+RUN cp $(php -r "echo ini_get('extension_dir');")/pdo_sqlite.so /tmp/pdo_sqlite.so
+
 WORKDIR /var/www
 COPY . /var/www
 
@@ -46,14 +49,14 @@ ARG GROUP_NAME=www-data
 # Install runtime dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
         libsqlite3-0 inotify-tools \
-    && docker-php-ext-install pdo_sqlite \
-    && apt-get purge -y --auto-remove -o APT::AutoRemove::RecommendsImportant=false libsqlite3-dev \
     && apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
-# Enable pre-built inotify extension
-COPY --from=builder /tmp/inotify.so /tmp/inotify.so
+# Enable pre-built extensions
+COPY --from=builder /tmp/pdo_sqlite.so /tmp/inotify.so /tmp/
 RUN PHP_INI_PATH=$(php -i | grep "Scan this dir for additional .ini files" | cut -d ">" -f2 | xargs) \
+    && mv /tmp/pdo_sqlite.so $(php -r "echo ini_get('extension_dir');")/pdo_sqlite.so \
     && mv /tmp/inotify.so $(php -r "echo ini_get('extension_dir');")/inotify.so \
+    && echo "extension=pdo_sqlite.so" > "$PHP_INI_PATH/pdo_sqlite.ini" \
     && echo "extension=inotify.so" > "$PHP_INI_PATH/inotify.ini"
 
 # Create restricted user
