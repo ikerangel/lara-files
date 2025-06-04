@@ -29,11 +29,16 @@ RUN cd /tmp && \
 RUN cp $(php -r "echo ini_get('extension_dir');")/pdo_sqlite.so /tmp/pdo_sqlite.so
 
 WORKDIR /var/www
-COPY . /var/www
+
+# Copy application code with correct permissions
+COPY --chown=www-data:www-data . /var/www
 
 # Install Composer + dependencies
 RUN curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer \
     && composer install --no-dev --optimize-autoloader --prefer-dist
+
+# Set writable permissions only for required directories
+RUN chmod -R 775 storage bootstrap/cache
 
 #######################################################################
 # Stage 2 – production: Secure Apache + PHP + App Code               #
@@ -76,19 +81,16 @@ RUN if ! getent group ${GID} >/dev/null; then \
 # Apache configuration
 COPY docker/apache.conf /etc/apache2/sites-available/000-default.conf
 
-# Copy application code
-COPY --from=builder /var/www /var/www
+# Copy application code with correct ownership
+COPY --from=builder --chown=${USER_NAME}:${GROUP_NAME} /var/www /var/www
 
 # Production entrypoint
 COPY docker/common/entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN sed -i 's/\r$//' /usr/local/bin/entrypoint.sh && \
     chmod +x /usr/local/bin/entrypoint.sh
 
-# Set permissions
-RUN chown -R ${USER_NAME}:${GROUP_NAME} /var/www && \
-    find /var/www -type d -exec chmod 755 {} \; && \
-    find /var/www -type f -exec chmod 644 {} \; && \
-    chmod -R 775 /var/www/storage /var/www/bootstrap/cache
+# Set writable permissions only for required directories
+RUN chmod -R 775 /var/www/storage /var/www/bootstrap/cache
 
 WORKDIR /var/www
 EXPOSE 80
