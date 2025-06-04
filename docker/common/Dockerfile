@@ -9,7 +9,7 @@ ARG DEBIAN_FRONTEND=noninteractive
 
 # Install necessary system dependencies and PHP extensions for SQLite support
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        git unzip curl libsqlite3-dev \
+        git unzip curl libsqlite3-dev inotify-tools \
     && docker-php-ext-install pdo_sqlite \
     && a2enmod rewrite \
     && apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
@@ -50,7 +50,7 @@ ARG GROUP_NAME=www-data
 
 # Install runtime dependencies only
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    libsqlite3-dev \
+    libsqlite3-dev inotify-tools \
     && docker-php-ext-install pdo_sqlite \
     && a2enmod rewrite \
     && apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
