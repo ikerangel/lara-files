@@ -11,9 +11,65 @@ class MonitorStoredEvents extends Command
                             {--delay=1 : Seconds to wait after detecting an event}
                             {--last=5 : Display last N events before monitoring}';
 
-    protected $description = 'Monitor stored events table for real-time persistence verification';
+    protected $description = 'Monitor the stored_events table for real-time filesystem event persistence verification';
 
     private $shouldExit = false;
+
+    public function __construct()
+    {
+        parent::__construct();
+
+        $this->setHelp(<<<'HELP'
+DESCRIPTION:
+  Monitor the stored_events table to verify real-time persistence of filesystem events.
+  Displays new events as they occur in the database with color-coded event types.
+
+  Features:
+  - Shows historical events before starting live monitoring
+  - Color-coded event types for quick identification:
+    • Green: File/Directory creation
+    • Blue: File modification
+    • Red: File/Directory deletion
+  - Normalizes Windows paths to Unix-style
+  - Graceful exit with Ctrl+C
+
+USAGE:
+  php artisan events:monitor-db [options]
+
+OPTIONS:
+  --delay=<seconds>   Delay between processing events (minimum 0.5s) [default: 1s]
+  --last=<number>     Show last N historical events before monitoring [default: 5]
+
+EXAMPLES:
+  Start monitoring with default settings:
+    php artisan events:monitor-db
+
+  Monitor with custom settings (show last 3 events, 0.5s delay):
+    php artisan events:monitor-db --last=3 --delay=0.5
+
+OUTPUT FORMAT:
+  [LIVE] [HH:MM:SS] <ICON> <COLORED_EVENT_TYPE>: <PATH>
+  [HIST] [HH:MM:SS] <ICON> <COLORED_EVENT_TYPE>: <PATH>
+
+  Prefixes:
+    [LIVE] - Real-time events detected during monitoring
+    [HIST] - Historical events shown at startup
+
+  Icons:
+    📄 - File event
+    📁 - Directory created
+    🗑️ - Directory deleted
+    🔄 - File modified
+    ❌ - File deleted
+    ❓ - Unknown event type
+
+COLOR SCHEME:
+  \e[32mGreen\e[0m  - File/Directory creation
+  \e[34mBlue\e[0m   - File modification
+  \e[31mRed\e[0m    - File/Directory deletion
+HELP
+        );
+    }
 
     public function handle()
     {
@@ -109,14 +165,14 @@ class MonitorStoredEvents extends Command
 
         // Apply colors based on event type
         if (str_contains($type, 'CREATED')) {
-            return "<fg=green>$type</>";   // Green for creation
+            return "<fg=green>$type</>";
         } elseif (str_contains($type, 'MODIFIED')) {
-            return "<fg=blue>$type</>";     // Blue for modification
+            return "<fg=blue>$type</>";
         } elseif (str_contains($type, 'DELETED')) {
-            return "<fg=red>$type</>";     // Red for deletion
+            return "<fg=red>$type</>";
         }
 
-        return $type; // Default without color
+        return $type;
     }
 
     protected function getEventType(string $className): string
