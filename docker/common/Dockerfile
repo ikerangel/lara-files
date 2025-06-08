@@ -11,7 +11,7 @@ ARG DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
         git unzip curl libsqlite3-dev inotify-tools \
         build-essential autoconf libinotifytools0-dev \
-    && docker-php-ext-install pdo_sqlite \
+    && docker-php-ext-install pdo_sqlite pcntl \
     && a2enmod rewrite \
     && apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
@@ -31,6 +31,7 @@ RUN PHP_INI_PATH=$(php -i | grep "Scan this dir for additional .ini files" | sed
 
 # Verify inotify installation
 RUN php -m | grep inotify
+RUN php -m | grep pcntl
 
 WORKDIR /var/www
 COPY . /var/www
@@ -53,9 +54,15 @@ ARG GID=33
 ARG USER_NAME=isl
 ARG GROUP_NAME=www-data
 
-# Install runtime dependencies
+# Install runtime dependencies + build tools for pcntl
 RUN apt-get update && apt-get install -y --no-install-recommends \
         libsqlite3-0 inotify-tools libinotifytools0 \
+        # Temporary build tools
+        gcc make libc-dev \
+    # Install pcntl
+    && docker-php-ext-install pcntl \
+    # Remove build tools
+    && apt-get purge -y --auto-remove gcc make libc-dev \
     && apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
 # Enable pre-built inotify extension
@@ -71,6 +78,7 @@ RUN apt-get update && \
 
 # Verify installations
 RUN php -m | grep inotify && node -v
+RUN php -m | grep pcntl
 
 # Create restricted user
 RUN if ! getent group ${GID} >/dev/null; then \
