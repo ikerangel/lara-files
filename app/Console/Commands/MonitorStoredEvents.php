@@ -14,9 +14,15 @@ class MonitorStoredEvents extends Command
                             {--delay=1 : Seconds to wait after detecting an event}';
 
     protected $description = 'Monitor stored events table for real-time persistence verification';
-
+    private $shouldExit = false; // Flag to control exit
     public function handle()
     {
+        // Setup signal handler for graceful exit
+        pcntl_async_signals(true);
+        pcntl_signal(SIGINT, function () {
+            $this->shouldExit = true;
+        });
+
         $lastId = EloquentStoredEvent::max('id') ?? 0;
         $delay = max(0.5, (float)$this->option('delay'));  // Minimum 0.5s delay
 
@@ -28,30 +34,36 @@ class MonitorStoredEvents extends Command
         $startTime = microtime(true);
         $eventCount = 0;
 
-        while (true) {
+        while (!$this->shouldExit) {
             $events = EloquentStoredEvent::where('id', '>', $lastId)
                 ->orderBy('id')
                 ->get();
 
             if ($events->isNotEmpty()) {
                 foreach ($events as $event) {
+                    if ($this->shouldExit) break 2; // Exit outer loop immediately
+
                     $this->displayEvent($event);
                     $lastId = $event->id;
                     $eventCount++;
 
-                    // Add delay after each event to prevent DB locks
-                    usleep($delay * 500000);  // Half the delay now
+                    // Add delay after each event
+                    usleep($delay * 500000);
                 }
 
-                // Add the other half of delay after processing batch
+                // Add batch delay
                 usleep($delay * 500000);
 
                 $this->printStats($startTime, $eventCount);
             } else {
-                // Only check every 500ms when no events
+                // Check for exit signal during idle
+                if ($this->shouldExit) break;
                 usleep(500000);
             }
         }
+
+        $this->newLine();
+        $this->info('Monitoring stopped.');
     }
 
     protected function displayEvent(EloquentStoredEvent $event)
@@ -105,19 +117,4 @@ class MonitorStoredEvents extends Command
             . " <fg=magenta>Avg:</> {$rate}s/event\n");
     }
 
-    // Add proper signal handling
-    protected function configure()
-    {
-        parent::configure();
-        $this->setHandler(new class($this) {
-            public function __construct($command) {
-                pcntl_async_signals(true);
-                pcntl_signal(SIGINT, function () use ($command) {
-                    $command->newLine();
-                    $command->info('Monitoring stopped.');
-                    exit(0);
-                });
-            }
-        });
-    }
 }
