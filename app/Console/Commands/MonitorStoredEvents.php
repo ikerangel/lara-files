@@ -65,9 +65,12 @@ class MonitorStoredEvents extends Command
         // Normalize Windows paths
         $path = str_replace('\\', '/', $path);
 
+        // Extract time portion from the datetime string
+        $time = substr($event->created_at, 11, 8);  // Extract HH:MM:SS part
+
         $this->line(sprintf(
             "[%s] %s: %s",
-            $event->created_at->format('H:i:s'),
+            $time,
             $this->getEventType($event->event_class),
             $path
         ));
