@@ -14,6 +14,92 @@ class InitialFileSystemScan extends Command
 
     protected $description = 'Perform initial scan of file system and create events';
 
+        // Constructor to set custom help message
+    public function __construct()
+    {
+        parent::__construct();
+
+        $this->setHelp(<<<'HELP'
+          DESCRIPTION:
+            Perform the initial scan of a directory and record filesystem events in the database.
+
+            This command will:
+            - Recursively scan the given directory
+            - Generate events for every file and directory found
+            - Store these events in the `stored_events` table
+            - Display statistics and sample events at completion
+
+            💡 Use for initial setup - not recommended for active systems.
+
+          USAGE:
+            php artisan filesystem:scan <path> [options]
+
+          ARGUMENTS:
+            path                  Absolute path to scan (required)
+
+          OPTIONS:
+            --no-progress         Disable progress bar display (useful for CI environments)
+
+          OUTPUT:
+            - Progress bar showing current file being processed (unless disabled)
+            - Summary table with metrics:
+                • Directories found
+                • Files found
+                • Total size
+                • Errors encountered
+                • Events created
+                • Duration
+                • Items per second
+            - Sample of last 5 events created
+
+          SCANNING BEHAVIOR:
+            - Processes both files and directories
+            - Follows symbolic links
+            - Skips unreadable paths (counted as errors)
+            - Records creation events for all found items
+
+          SAMPLE OUTPUT:
+
+            Starting initial file system scan...
+            Path: /var/www
+
+            ✅ Initial scan completed successfully!
+
+            ┌───────────────────┬─────────────┐
+            │ Metric            │ Value       │
+            ├───────────────────┼─────────────┤
+            │ Directories found │ 1,024       │
+            │ Files found       │ 12,345      │
+            │ Total size        │ 1.23 GB     │
+            │ Errors            │ 3           │
+            │ Events created    │ 13,369      │
+            │ Duration          │ 5.2 seconds │
+            │ Items per second  │ 2,571       │
+            └───────────────────┴─────────────┘
+
+            📋 Sample events created (last 5):
+            ┌─────────────┬───────────────┬──────────┬─────────────────────┐
+            │ Event       │ Path          │ Type     │ Created             │
+            ├─────────────┼───────────────┼──────────┼─────────────────────┤
+            │ FileCreated │ image.jpg     │ file     │ 2023-01-01 12:34:56 │
+            │ DirCreated  │ documents     │ directory│ 2023-01-01 12:34:55 │
+            └─────────────┴───────────────┴──────────┴─────────────────────┘
+
+          EXAMPLES:
+            1. Scan with progress bar:
+              php artisan filesystem:scan /home/user/documents
+
+            2. Scan without progress bar:
+              php artisan filesystem:scan /mnt/data --no-progress
+
+          NOTES:
+            - Requires write permission to the database
+            - Large directories may take significant time
+            - Check error count for accessibility issues
+          HELP
+                  );
+    }
+
     public function handle()
     {
         $path = $this->argument('path');
