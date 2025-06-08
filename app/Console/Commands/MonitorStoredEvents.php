@@ -2,7 +2,6 @@
 
 namespace App\Console\Commands;
 
-use Illuminate\Support\Str;
 use Illuminate\Console\Command;
 use Spatie\EventSourcing\StoredEvents\Models\EloquentStoredEvent;
 
@@ -26,7 +25,7 @@ class MonitorStoredEvents extends Command
 
         $lastId = EloquentStoredEvent::max('id') ?? 0;
         $delay = max(0.5, (float)$this->option('delay'));
-        $showLast = max(0, (int)$this->option('last')); // Ensure non-negative
+        $showLast = max(0, (int)$this->option('last'));
 
         $this->info("Monitoring stored_events table. Press Ctrl+C to exit.");
         $this->line("Initial last event ID: $lastId");
@@ -70,7 +69,7 @@ class MonitorStoredEvents extends Command
         $events = EloquentStoredEvent::orderBy('id', 'desc')
             ->take($count)
             ->get()
-            ->reverse(); // Show oldest first in the recent list
+            ->reverse();
 
         if ($events->isEmpty()) {
             $this->line('No historical events found');
@@ -92,16 +91,32 @@ class MonitorStoredEvents extends Command
         $path = str_replace('\\', '/', $path);
 
         // Extract time portion from the datetime string
-        $time = substr($event->created_at, 11, 8);  // Extract HH:MM:SS part
+        $time = substr($event->created_at, 11, 8);
 
         $prefix = $isHistorical ? '[HIST] ' : '[LIVE] ';
 
         $this->line(sprintf(
             "{$prefix}[%s] %s: %s",
             $time,
-            $this->getEventType($event->event_class),
+            $this->getColoredEventType($event->event_class),
             $path
         ));
+    }
+
+    protected function getColoredEventType(string $className): string
+    {
+        $type = $this->getEventType($className);
+
+        // Apply colors based on event type
+        if (str_contains($type, 'CREATED')) {
+            return "<fg=green>$type</>";   // Green for creation
+        } elseif (str_contains($type, 'MODIFIED')) {
+            return "<fg=blue>$type</>";     // Blue for modification
+        } elseif (str_contains($type, 'DELETED')) {
+            return "<fg=red>$type</>";     // Red for deletion
+        }
+
+        return $type; // Default without color
     }
 
     protected function getEventType(string $className): string
