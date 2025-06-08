@@ -32,9 +32,6 @@ class MonitorStoredEvents extends Command
         $this->line("Delay after event: {$delay}s");
         $this->line(str_repeat('-', 60));
 
-        $startTime = microtime(true);
-        $eventCount = 0;
-
         while (!$this->shouldExit) {
             $events = EloquentStoredEvent::where('id', '>', $lastId)
                 ->orderBy('id')
@@ -46,13 +43,10 @@ class MonitorStoredEvents extends Command
 
                     $this->displayEvent($event);
                     $lastId = $event->id;
-                    $eventCount++;
 
                     // Add delay after each event
-                    usleep((int)($delay * 500000));
+                    usleep((int)($delay * 1000000));
                 }
-                usleep((int)($delay * 500000));
-                $this->printStats($startTime, $eventCount);
             } else {
                 if ($this->shouldExit) break;
                 usleep(500000);  // 0.5s sleep when no events
@@ -71,17 +65,12 @@ class MonitorStoredEvents extends Command
         // Normalize Windows paths
         $path = str_replace('\\', '/', $path);
 
-        // Calculate storage delay in milliseconds
-        $storageDelay = number_format(
-            Carbon::now()->diffInMilliseconds($event->created_at) / 1000,
-            3
-        );
-
-        $this->line("<fg=yellow>╔═[NEW EVENT]═[ID: {$event->id}]═[+{$storageDelay}s]═╗</>");
-        $this->line("<fg=cyan>║ Type:</> " . Str::padRight($this->getEventType($event->event_class), 52) . "║");
-        $this->line("<fg=cyan>║ Path:</> " . Str::limit($path, 52) . str_repeat(' ', max(0, 52 - mb_strlen($path))) . " ║");
-        $this->line("<fg=cyan>║ Stored At:</> {$event->created_at}" . str_repeat(' ', 30) . "║");
-        $this->line("<fg=yellow>╚═══════════════════════════════════════════════════════╝</>");
+        $this->line(sprintf(
+            "[%s] %s: %s",
+            $event->created_at->format('H:i:s'),
+            $this->getEventType($event->event_class),
+            $path
+        ));
     }
 
     protected function getEventType(string $className): string
@@ -94,15 +83,5 @@ class MonitorStoredEvents extends Command
             str_contains($className, 'DirectoryDeleted') => '🗑️ DIRECTORY DELETED',
             default => '❓ ' . class_basename($className)
         };
-    }
-
-    protected function printStats(float $startTime, int $eventCount)
-    {
-        $elapsed = microtime(true) - $startTime;
-        $rate = $eventCount > 0 ? number_format($elapsed / $eventCount, 3) : 0;
-
-        $this->line("\n<fg=magenta>[STATS] Events:</> $eventCount"
-            . " <fg=magenta>Elapsed:</> " . number_format($elapsed, 1) . "s"
-            . " <fg=magenta>Avg:</> {$rate}s/event\n");
     }
 }
