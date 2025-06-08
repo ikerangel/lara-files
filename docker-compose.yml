@@ -17,6 +17,7 @@ services:
     restart: unless-stopped
     volumes:
       - .:/var/www
+      - /var/www/html/PLANOS:/var/www/html/PLANOS:consistent
     environment:
       - APP_ENV=production
       - DB_CONNECTION=sqlite
