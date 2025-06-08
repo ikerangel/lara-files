@@ -3,14 +3,14 @@
 namespace App\Console\Commands;
 
 use Illuminate\Support\Str;
-use Illuminate\Support\Carbon;
 use Illuminate\Console\Command;
 use Spatie\EventSourcing\StoredEvents\Models\EloquentStoredEvent;
 
 class MonitorStoredEvents extends Command
 {
     protected $signature = 'events:monitor-db
-                            {--delay=1 : Seconds to wait after detecting an event}';
+                            {--delay=1 : Seconds to wait after detecting an event}
+                            {--last=5 : Display last N events before monitoring}';
 
     protected $description = 'Monitor stored events table for real-time persistence verification';
 
@@ -26,11 +26,19 @@ class MonitorStoredEvents extends Command
 
         $lastId = EloquentStoredEvent::max('id') ?? 0;
         $delay = max(0.5, (float)$this->option('delay'));
+        $showLast = max(0, (int)$this->option('last')); // Ensure non-negative
 
         $this->info("Monitoring stored_events table. Press Ctrl+C to exit.");
         $this->line("Initial last event ID: $lastId");
         $this->line("Delay after event: {$delay}s");
+        $this->line("Displaying last {$showLast} events");
         $this->line(str_repeat('-', 60));
+
+        // Display recent events if requested
+        if ($showLast > 0) {
+            $this->displayRecentEvents($showLast);
+            $this->line(str_repeat('-', 60));
+        }
 
         while (!$this->shouldExit) {
             $events = EloquentStoredEvent::where('id', '>', $lastId)
@@ -57,7 +65,25 @@ class MonitorStoredEvents extends Command
         $this->info('Monitoring stopped.');
     }
 
-    protected function displayEvent(EloquentStoredEvent $event)
+    protected function displayRecentEvents(int $count)
+    {
+        $events = EloquentStoredEvent::orderBy('id', 'desc')
+            ->take($count)
+            ->get()
+            ->reverse(); // Show oldest first in the recent list
+
+        if ($events->isEmpty()) {
+            $this->line('No historical events found');
+            return;
+        }
+
+        $this->line("=== LAST {$count} EVENTS ===");
+        foreach ($events as $event) {
+            $this->displayEvent($event, true);
+        }
+    }
+
+    protected function displayEvent(EloquentStoredEvent $event, bool $isHistorical = false)
     {
         $properties = $event->event_properties;
         $path = $properties['path'] ?? '';
@@ -68,8 +94,10 @@ class MonitorStoredEvents extends Command
         // Extract time portion from the datetime string
         $time = substr($event->created_at, 11, 8);  // Extract HH:MM:SS part
 
+        $prefix = $isHistorical ? '[HIST] ' : '[LIVE] ';
+
         $this->line(sprintf(
-            "[%s] %s: %s",
+            "{$prefix}[%s] %s: %s",
             $time,
             $this->getEventType($event->event_class),
             $path
