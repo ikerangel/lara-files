@@ -65,6 +65,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && apt-get purge -y --auto-remove gcc make libc-dev \
     && apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
+# Configure inotify system limits for production
+RUN echo "fs.inotify.max_user_watches=131072" >> /etc/sysctl.conf \
+    && echo "fs.inotify.max_user_instances=512" >> /etc/sysctl.conf
+
 # Enable pre-built inotify extension
 COPY --from=builder /tmp/inotify.so /usr/local/lib/php/extensions/no-debug-non-zts-20230831/inotify.so
 COPY --from=builder /usr/local/etc/php/conf.d/inotify.ini /usr/local/etc/php/conf.d/inotify.ini
