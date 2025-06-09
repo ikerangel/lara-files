@@ -285,13 +285,14 @@ class FileSystemReconciler
      */
     private function pathBelongsToBasePath(string $path): bool
     {
-        $fullPath = $this->basePath . DIRECTORY_SEPARATOR . $path;
-        $realBasePath = realpath($this->basePath);
-        $realFullPath = realpath(dirname($fullPath));
+        // For deleted items, we can't use realpath since the path doesn't exist
+        // Instead, do a simple string comparison
+        $normalizedPath = str_replace(['/', '\\'], DIRECTORY_SEPARATOR, $path);
 
-        return $realFullPath !== false &&
-               $realBasePath !== false &&
-               (strpos($realFullPath, $realBasePath) === 0 || $realFullPath === $realBasePath);
+        // Check if it's a relative path within our base path structure
+        // Paths should not start with / or contain ..
+        return !str_starts_with($normalizedPath, DIRECTORY_SEPARATOR) &&
+              !str_contains($normalizedPath, '..');
     }
 
     private function getRelativePath(string $absolutePath): string
