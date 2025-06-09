@@ -10,7 +10,9 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use App\Events\FileSystem\FileCreated;
 use App\Events\FileSystem\FileModified;
+use App\Events\FileSystem\FileDeleted;
 use App\Events\FileSystem\DirectoryCreated;
+use App\Events\FileSystem\DirectoryDeleted;
 use Spatie\EventSourcing\StoredEvents\Models\EloquentStoredEvent;
 
 class FileSystemReconciler
@@ -29,7 +31,10 @@ class FileSystemReconciler
 
         $currentState = $this->crawlFileSystem();
         $eventTimeline = $this->getEventTimeline();
-        $this->compareStates($currentState, $eventTimeline);
+
+        // Two-phase reconciliation
+        $this->findMissingItems($currentState, $eventTimeline);  // Phase 1: Find deletions
+        $this->findExistingItemDiscrepancies($currentState, $eventTimeline);  // Phase 2: Find additions/modifications
 
         $generatedEvents = $this->generateReconciliationEvents();
 
@@ -72,10 +77,10 @@ class FileSystemReconciler
 
     private function getEventTimeline(): array
     {
-      $events = EloquentStoredEvent::query()
-          ->where('event_class', 'LIKE', '%FileSystem%')
-          ->orderBy('created_at', 'desc')
-          ->get(['event_class', 'event_properties', 'created_at']);
+        $events = EloquentStoredEvent::query()
+            ->where('event_class', 'LIKE', '%FileSystem%')
+            ->orderBy('created_at', 'desc')
+            ->get(['event_class', 'event_properties', 'created_at']);
 
         $timeline = [];
 
@@ -99,7 +104,40 @@ class FileSystemReconciler
         return $timeline;
     }
 
-    private function compareStates(array $currentState, array $eventTimeline): void
+    /**
+     * Phase 1: Find items that exist in events but are missing from filesystem
+     * These should be marked as deleted
+     */
+    private function findMissingItems(array $currentState, array $eventTimeline): void
+    {
+        foreach ($eventTimeline as $path => $event) {
+            // Skip if this path doesn't belong to our base path
+            if (!$this->pathBelongsToBasePath($path)) {
+                continue;
+            }
+
+            // Skip if the last event was already a deletion
+            if ($this->isDeleteEvent($event['event_class'])) {
+                continue;
+            }
+
+            // If item exists in events but not in current filesystem, it was deleted
+            if (!isset($currentState[$path])) {
+                $this->discrepancies[$path] = [
+                    'type' => $event['type'],
+                    'reason' => 'missing_from_filesystem',
+                    'current' => null,
+                    'event' => $event
+                ];
+            }
+        }
+    }
+
+    /**
+     * Phase 2: Find discrepancies for items that exist in filesystem
+     * Original logic for additions and modifications
+     */
+    private function findExistingItemDiscrepancies(array $currentState, array $eventTimeline): void
     {
         foreach ($currentState as $path => $current) {
             $event = $eventTimeline[$path] ?? null;
@@ -147,9 +185,23 @@ class FileSystemReconciler
     {
         $count = 0;
 
-        foreach ($this->discrepancies as $path => $discrepancy) {
+        // Sort discrepancies to handle deletions of parent folders before children
+        $sortedDiscrepancies = $this->sortDiscrepanciesForDeletion($this->discrepancies);
+
+        foreach ($sortedDiscrepancies as $path => $discrepancy) {
             try {
                 switch ($discrepancy['reason']) {
+                    case 'missing_from_filesystem':
+                        // Create deletion events for items that no longer exist
+                        if ($discrepancy['type'] === 'directory') {
+                            event(new DirectoryDeleted($path, 'reconciled'));
+                            $count++;
+                        } else {
+                            event(new FileDeleted($path, 'reconciled'));
+                            $count++;
+                        }
+                        break;
+
                     case 'missing_event':
                     case 'deleted_but_exists':
                         if ($discrepancy['type'] === 'directory') {
@@ -194,6 +246,52 @@ class FileSystemReconciler
         }
 
         return $count;
+    }
+
+    /**
+     * Sort discrepancies to handle directory deletions properly
+     * Directories should be deleted after their contents (deepest first)
+     */
+    private function sortDiscrepanciesForDeletion(array $discrepancies): array
+    {
+        $deletions = [];
+        $others = [];
+
+        foreach ($discrepancies as $path => $discrepancy) {
+            if ($discrepancy['reason'] === 'missing_from_filesystem') {
+                $deletions[$path] = $discrepancy;
+            } else {
+                $others[$path] = $discrepancy;
+            }
+        }
+
+        // Sort deletions by path depth (deepest first) to delete children before parents
+        uksort($deletions, function ($a, $b) {
+            $depthA = substr_count($a, DIRECTORY_SEPARATOR);
+            $depthB = substr_count($b, DIRECTORY_SEPARATOR);
+
+            if ($depthA === $depthB) {
+                return strcmp($b, $a); // Reverse alphabetical for same depth
+            }
+
+            return $depthB - $depthA; // Deeper paths first
+        });
+
+        return array_merge($deletions, $others);
+    }
+
+    /**
+     * Check if a path belongs to our base path
+     */
+    private function pathBelongsToBasePath(string $path): bool
+    {
+        $fullPath = $this->basePath . DIRECTORY_SEPARATOR . $path;
+        $realBasePath = realpath($this->basePath);
+        $realFullPath = realpath(dirname($fullPath));
+
+        return $realFullPath !== false &&
+               $realBasePath !== false &&
+               (strpos($realFullPath, $realBasePath) === 0 || $realFullPath === $realBasePath);
     }
 
     private function getRelativePath(string $absolutePath): string
