@@ -44,7 +44,18 @@ class FileSystemProjector extends Projector
 
     private function update(FileSystemEvent $event, bool $isDir = false): void
     {
+        /* ── Skip entire path if it lives inside an omitted directory ── */
+        if ($this->shouldSkipPath($event->path)) {
+            return;          // ignore completely
+        }
+
         [$name, $ext] = $this->splitNameExt($event->path);
+
+        /* ── skip unwanted file types --------------------------------------- */
+        if (!$isDir && $this->shouldSkipExtension($ext)) {
+            return;
+        }
+
 
         File::updateOrCreate(
             ['path' => $event->path],
@@ -64,6 +75,52 @@ class FileSystemProjector extends Projector
                 'modified_at'       => $event->modifiedAt ?? now(),
             ]
         );
+    }
+
+    /* =========  Files & Folders Omitting utilities  ========= */
+
+    /**
+     * Return TRUE when the file extension is in the omit list.
+     */
+    private function shouldSkipExtension(string $ext): bool
+    {
+        $clean = strtolower(ltrim($ext, '.'));
+
+        return in_array(
+            $clean,
+            array_map('strtolower', config('projectors.filesystem.omit_extensions', [])),
+            true
+        );
+    }
+
+    /**
+     * Return TRUE when any segment of the given path
+     *  • equals an “omit_directories” entry, OR
+     *  • starts with one of the “omit_directory_prefixes”.
+     */
+    private function shouldSkipPath(string $path): bool
+    {
+        $segments = explode('/', $path);
+
+        $omit   = array_map('strtolower', config('projectors.filesystem.omit_directories', []));
+        $prefix = array_map('strtolower', config('projectors.filesystem.omit_directory_prefixes', []));
+
+        foreach ($segments as $seg) {
+            $seg = strtolower($seg);
+
+            // exact directory names
+            if (in_array($seg, $omit, true)) {
+                return true;
+            }
+
+            // prefixes (e.g. everything that starts with '00')
+            foreach ($prefix as $p) {
+                if ($p !== '' && str_starts_with($seg, $p)) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     /* =========  Parsing utilities  ========= */
