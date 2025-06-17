@@ -77,17 +77,50 @@ class FileSystemProjector extends Projector
             : [substr($basename, 0, $pos), substr($basename, $pos)];
     }
 
-    private function extractRevision(string $name): ?string
+  /**
+   * Return the revision (e.g. "revA", "v1", "20250617") or NULL when the tail
+   * does not match one of the allowed patterns[1].
+   *
+   * ── How the unified regular expression works ─────────────────────────────
+   *   1.  rev[0-9a-z]+   → matches strings that start with “rev” followed by
+   *       one or more digits or lowercase letters, e.g. “revA”, “rev01”[1].
+   *   2.  v[0-9]+[a-z]*  → matches strings that start with “v” (upper- or
+   *       lower-case) followed by one or more digits and *optionally* a
+   *       trailing letter sequence, e.g. “v1”, “V1”, “v2b”, “v10a”[2].
+   *   3.  [0-9]{8}       → matches exactly eight consecutive digits, which we
+   *       use for dates like “20250617” (YYYYMMDD)[3].
+   *   4.  The /i modifier makes the whole pattern case-insensitive, so
+   *       “_V1” and “_v1” are treated the same[4].
+   */
+  private function extractRevision(string $name): ?string
+  {
+      $pos = strrpos($name, '_');          // last underscore[1]
+      if ($pos === false) {                // none => no revision[1]
+          return null;                     // early exit[1]
+      }
+
+      $token = substr($name, $pos + 1);    // candidate after "_"[2]
+
+      // Allowed patterns combined into one regular expression[2]
+      $isRevision = preg_match(
+          '/^(?:rev[0-9a-z]+|v[0-9]+[a-z]*|[0-9]{8})$/i',  // unified regex[2]
+          $token
+      );
+
+      return $isRevision ? $token : null;  // keep or ignore[2]
+  }
+
+    /**
+     * Strip “_revision” only when one was actually detected[1].
+     */
+    private function extractPartName(string $name): string
     {
-        if (!str_contains($name, '_')) return null;
-        return substr($name, strrpos($name, '_') + 1);
+        $rev = $this->extractRevision($name);        // reuse logic[2]
+        return $rev !== null
+            ? substr($name, 0, -strlen('_' . $rev))  // cut off tail[1]
+            : $name;                                 // leave intact[1]
     }
 
-    private function extractPartName(string $name): ?string
-    {
-        $rev = $this->extractRevision($name);
-        return $rev ? substr($name, 0, -strlen('_'.$rev)) : $name;
-    }
 
     /**
      * segment(…, 0) == MAIN-TYPE-N
