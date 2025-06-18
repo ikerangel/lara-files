@@ -8,7 +8,7 @@ class File extends Model
 {
     protected $fillable = [
         'path','name','file_type','extension','revision','part_name',
-        'product_main_type','product_sub_type','parent','depth',
+        'product_main_type','product_sub_type','parent','parent_path','depth',
         'origin','content_hash','size','modified_at',
     ];
 
