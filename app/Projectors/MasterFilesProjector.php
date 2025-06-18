@@ -22,11 +22,21 @@ class MasterFilesProjector extends Projector
 
     public function onFileCreated(FileCreated $event): void
     {
+        // early-out when path lives in an omitted directory
+        if ($this->shouldSkipPath($event->path)) {
+          return;
+        }
+
         $this->refreshForPath($event->path);
     }
 
     public function onFileModified(FileModified $event): void
     {
+        // early-out when path lives in an omitted directory
+        if ($this->shouldSkipPath($event->path)) {
+          return;
+        }
+
         $this->refreshForPath($event->path);
     }
 
@@ -143,5 +153,33 @@ class MasterFilesProjector extends Projector
     private function isSlaveExt(?string $ext): bool
     {
         return in_array(strtolower($ext ?? ''), Config::get('projectors.masterfiles.slave_extensions', []), true);
+    }
+    /* =========  Path-omitting helper  ========= */
+
+    private function shouldSkipPath(string $path): bool
+    {
+        $segments = explode('/', $path);
+
+        $omit   = array_map('strtolower',
+            Config::get('projectors.masterfiles.omit_directories', [])
+        );
+        $prefix = array_map('strtolower',
+            Config::get('projectors.masterfiles.omit_directory_prefixes', [])
+        );
+
+        foreach ($segments as $seg) {
+            $seg = strtolower($seg);
+
+            if (in_array($seg, $omit, true)) {
+                return true;                       // full match
+            }
+
+            foreach ($prefix as $p) {              // prefix match
+                if ($p !== '' && str_starts_with($seg, $p)) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 }

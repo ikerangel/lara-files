@@ -24,4 +24,20 @@ return [
     'slave_extensions'  => [
         'pdf',
     ],
+
+    /* ───────────────────────────────────────────────────────────────
+     |  Omit logic
+     |    - Any folder whose name matches an entry in
+     |      “omit_directories” must be omitted
+     |    - Any folder whose name _starts with_ one of the prefixes
+     |      in “omit_directory_prefixes” must be omitted
+     ─────────────────────────────────────────────────────────────── */
+    'omit_directories'        => [          // exact names
+        'ARCHIVO', 'MODIFICAR', '.git', '.svn',
+    ],
+
+    'omit_directory_prefixes' => [          // anything that _starts with_
+        '00', '_', '.',                       // 00*, _*, .* …
+    ],
+
 ];
