@@ -37,7 +37,9 @@ return [
     ],
 
     'omit_directory_prefixes' => [          // anything that _starts with_
-        '00', '_', '.',                       // 00*, _*, .* …
+        '00',
+        '_',
+        '.',                       // 00*, _*, .* …
     ],
 
 ];

@@ -80,8 +80,8 @@ class MasterFilesProjector extends Projector
                 ->where('part_name',   $file->part_name)
                 ->get();
 
-            foreach ($candidates as $cand) {
-                $this->evaluateMaster($cand);
+            foreach ($candidates as $candidate) {
+                $this->evaluateMaster($candidate);
             }
         }
     }
@@ -93,6 +93,12 @@ class MasterFilesProjector extends Projector
      */
     private function evaluateMaster(File $master): void
     {
+        // Never touch files that live in an omitted path
+        if ($this->shouldSkipPath($master->path)) {
+            Master::where('path', $master->path)->delete();   // clean up if it was inserted earlier
+            return;
+        }
+
         $slave = $this->locateSlave($master);
 
         if ($slave) {
@@ -120,9 +126,15 @@ class MasterFilesProjector extends Projector
         return File::query()
             ->where('parent_path', $master->parent_path)
             ->where('part_name',   $master->part_name)
-            ->whereIn('extension', Config::get('projectors.masterfiles.slave_extensions', []))
-            ->orderByDesc('revision')        // newest first; keeps rule flexible
-            ->first();
+            ->whereIn(
+                'extension',
+                Config::get('projectors.masterfiles.slave_extensions', [])
+            )
+            ->orderByDesc('revision')
+            ->get()                         // fetch all candidates in that order
+            ->first(fn ($f) =>              // keep the first one that
+                !$this->shouldSkipPath($f->path)  // isn’t in an omitted dir
+            );
     }
 
     private function refreshNeighbouringMasters(string $deletedPath): void
@@ -138,8 +150,8 @@ class MasterFilesProjector extends Projector
             ->whereIn('extension', Config::get('projectors.masterfiles.master_extensions', []))
             ->get();
 
-        foreach ($candidates as $cand) {
-            $this->evaluateMaster($cand);
+        foreach ($candidates as $candidate) {
+            $this->evaluateMaster($candidate);
         }
     }
 
