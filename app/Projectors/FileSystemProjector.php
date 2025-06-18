@@ -195,10 +195,28 @@ class FileSystemProjector extends Projector
         return $subs ? ($concat ? implode('/', $subs) : $subs[0]) : null;
     }
 
+    /**
+     * Return the immediate parent directory name or NULL when the file/folder
+     * is stored at the repository root.
+     *
+     *  examples ────────────────────────────────────────────────────────────────
+     *   "A/B/C.txt"          → "B"
+     *   "A/B"   (directory)  → "A"
+     *   "rootFile.txt"       → null
+     */
     private function parentPath(string $path): ?string
     {
-        return str_contains($path, '/')
-            ? dirname($path)                     // returns "." for first level, handle…
-            : null;
+        // Fast-path: no slash → path lives at repo root
+        if (!str_contains($path, '/')) {
+            return null;
+        }
+
+        // Normalise and split once
+        $parentPath = dirname($path);         // "A/B" from "A/B/C.txt"
+        if ($parentPath === '.' || $parentPath === '') {
+            return null;                      // first-level entry
+        }
+
+        return basename($parentPath);         // "B"
     }
 }
