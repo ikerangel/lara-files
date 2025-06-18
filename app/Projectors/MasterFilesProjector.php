@@ -110,6 +110,8 @@ class MasterFilesProjector extends Projector
                     'content_hash' => $master->content_hash,
                     'slave_path'   => $slave->path,
                     'modified_at'  => $master->modified_at,
+                    'part_name'    => $master->part_name,
+                    'extension'    => $master->extension,
                 ],
             );
         } else {
