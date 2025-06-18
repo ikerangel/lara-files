@@ -67,7 +67,8 @@ class FileSystemProjector extends Projector
                 'part_name'         => $isDir ? null : $this->extractPartName($name),
                 'product_main_type' => $this->segment($event->path, 0),
                 'product_sub_type'  => $this->segment($event->path, 1, true),
-                'parent'            => $this->parentPath($event->path),
+                'parent'            => $this->parentFolder($event->path),
+                'parent_path'       => $this->parentPath($event->path),
                 'depth'             => substr_count($event->path, '/'),
                 'origin'            => $event->origin,
                 'content_hash'      => $event->hash ?? null,
@@ -204,19 +205,23 @@ class FileSystemProjector extends Projector
      *   "A/B"   (directory)  → "A"
      *   "rootFile.txt"       → null
      */
+    private function parentFolder(string $path): ?string
+    {
+        if (!str_contains($path, '/')) {
+            return null;                 // file/dir lives at repo root
+        }
+
+        return basename(dirname($path)); // "B"
+    }
+
+    /** Full path to the parent folder (“A/B” in “A/B/C.txt”) or NULL at root. */
     private function parentPath(string $path): ?string
     {
-        // Fast-path: no slash → path lives at repo root
         if (!str_contains($path, '/')) {
             return null;
         }
 
-        // Normalise and split once
-        $parentPath = dirname($path);         // "A/B" from "A/B/C.txt"
-        if ($parentPath === '.' || $parentPath === '') {
-            return null;                      // first-level entry
-        }
-
-        return basename($parentPath);         // "B"
+        $parent = dirname($path);        // "A/B"
+        return $parent === '.' ? null : $parent;
     }
 }

@@ -24,6 +24,7 @@ return new class extends Migration {
 
             // hierarchy / metadata
             $table->string('parent')->nullable();       // parent *path* (faster than FK)
+            $table->string('parent_path')->nullable();
             $table->unsignedTinyInteger('depth');       // 0 = root, 1 = MAIN-TYPE, …
             $table->string('origin');                   // initial | real-time | reconciled
             $table->string('content_hash')->nullable(); // sha256 | md5 (big files)
