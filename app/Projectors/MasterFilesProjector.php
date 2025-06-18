@@ -15,6 +15,9 @@ use Spatie\EventSourcing\EventHandlers\Projectors\Projector;
 
 class MasterFilesProjector extends Projector
 {
+    /* =========  Projector Order  ========= */
+    public int $weight = 2; //Projectors with a lower weight run first
+
     /* =========  Event hooks  ========= */
 
     public function onFileCreated(FileCreated $event): void
