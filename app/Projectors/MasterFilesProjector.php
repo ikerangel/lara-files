@@ -105,13 +105,14 @@ class MasterFilesProjector extends Projector
             Master::updateOrCreate(
                 ['path' => $master->path],
                 [
-                    'revision'     => $master->revision,
-                    'parent_path'  => $master->parent_path,
-                    'content_hash' => $master->content_hash,
-                    'slave_path'   => $slave->path,
-                    'modified_at'  => $master->modified_at,
-                    'part_name'    => $master->part_name,
-                    'extension'    => $master->extension,
+                    'master_revision' => $master->revision,
+                    'parent_path'     => $master->parent_path,
+                    'content_hash'    => $master->content_hash,
+                    'slave_path'      => $slave->path,
+                    'slave_revision'  => $slave->revision,
+                    'modified_at'     => $master->modified_at,
+                    'part_name'       => $master->part_name,
+                    'extension'       => $master->extension,
                 ],
             );
         } else {

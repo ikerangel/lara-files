@@ -14,10 +14,11 @@ return new class extends Migration {
             $table->string('path')->unique();          // absolute-to-watch root
             // slave reference
             $table->string('slave_path');              // the .pdf (or future) document
+            $table->string('slave_revision')->nullable();
 
             $table->string('part_name')->nullable();
-            $table->string('revision')->nullable();
             $table->string('extension')->nullable();
+            $table->string('master_revision')->nullable();
             $table->string('parent_path')->nullable(); // full folder path
             $table->string('content_hash')->nullable();
             $table->timestamp('modified_at')->nullable();
@@ -26,10 +27,8 @@ return new class extends Migration {
 
             // quick look-ups
             $table->index('parent_path');
-            $table->index('slave_path');
             $table->index('content_hash');
             $table->index('part_name');
-            $table->index('extension');
         });
     }
 
