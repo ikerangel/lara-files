@@ -19,4 +19,8 @@ return new class extends Migration
             $table->index('aggregate_uuid');
         });
     }
+    public function down(): void
+    {
+        Schema::dropIfExists('snapshots');
+    }
 };
