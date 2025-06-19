@@ -21,17 +21,24 @@ class PartsProjector extends Projector
 
     public function onFileCreated(FileCreated $event): void
     {
-        $this->refreshForPath($event->path);
+        $this->dispatchRefreshes($event->path);
     }
 
     public function onFileModified(FileModified $event): void
     {
-        $this->refreshForPath($event->path);
+        $this->dispatchRefreshes($event->path);
     }
 
     public function onFileDeleted(FileDeleted $event): void
     {
+        /* 1. remove the row when the deleted file *was* a part          */
         Part::where('path', $event->path)->delete();
+
+        /* 2. if a slave disappeared, the related parts lose their link  */
+        $file = File::where('path', $event->path)->first();
+        if ($file && $this->isSlaveExt($file->extension)) {
+            $this->refreshByPartName($file->part_name);
+        }
     }
 
     public function onDirectoryDeleted(DirectoryDeleted $event): void
@@ -39,34 +46,60 @@ class PartsProjector extends Projector
         Part::where('path', 'like', $event->path.'%')->delete();
     }
 
-    /* =====  Core  ============================================= */
+    /* ───── Dispatcher ─────────────────────────────────────────── */
 
-    private function refreshForPath(string $path): void
+    /**
+     * Decide whether the incoming path is
+     *   • a “part”  → refresh itself
+     *   • a “slave” → refresh every sibling part that shares the part_name
+     */
+    private function dispatchRefreshes(string $path): void
     {
         if ($this->shouldSkipPath($path)) {
-            Part::where('path', $path)->delete(); // clean up if previously stored
             return;
         }
 
         $file = File::where('path', $path)->first();
         if (!$file) {
-            return; // FileSystemProjector not yet committed
+            return; // FileSystemProjector not committed yet
         }
 
-        if (!$this->isPartExt($file->extension)) {
-            return; // not an interesting file type
+        if ($this->isPartExt($file->extension)) {
+            $this->refreshForPath($file->path);
         }
 
-        /* ── locate a potential master ───────────────────────── */
+        if ($this->isSlaveExt($file->extension)) {
+            $this->refreshByPartName($file->part_name);
+        }
+    }
+
+    private function refreshByPartName(string $partName): void
+    {
+        Part::where('part_name', $partName)
+            ->pluck('path')
+            ->each(fn (string $p) => $this->refreshForPath($p));
+    }
+
+    /* =====  Core  ============================================= */
+
+    private function refreshForPath(string $path): void
+    {
+        $file = File::where('path', $path)->first();
+        if (!$file || !$this->isPartExt($file->extension)) {
+            return;
+        }
+
+        /* Find a candidate master by name OR identical hash */
         $master = Master::query()
             ->where(function ($q) use ($file) {
                 $q->where('part_name', $file->part_name)
                   ->orWhere('content_hash', $file->content_hash);
             })
-            ->orderByDesc('slave_revision')   // newest pdf first
+            ->orderByDesc('slave_revision')   // newest slave first
             ->first();
 
-        $contentMatches = $master && $file->content_hash
+        $contentMatches = $master
+            && $file->content_hash
             && $file->content_hash === $master->content_hash;
 
         Part::updateOrCreate(
@@ -75,6 +108,7 @@ class PartsProjector extends Projector
                 'part_name'         => $file->part_name,
                 'parent_path'       => $file->parent_path,
                 'extension'         => $file->extension,
+                'master_path'       => $master?->path,
                 'master_revision'   => $master?->master_revision,
                 'slave_path'        => $master?->slave_path,
                 'slave_revision'    => $master?->slave_revision,
@@ -89,9 +123,27 @@ class PartsProjector extends Projector
 
     private function isPartExt(?string $ext): bool
     {
-        return in_array(strtolower($ext ?? ''), Config::get('projectors.parts.part_extensions', []), true);
+        return in_array(
+            strtolower($ext ?? ''),
+            Config::get('projectors.parts.part_extensions', []),
+            true
+        ); // “par, asm, doc/x, xls/x” by default[1]
     }
 
+    private function isSlaveExt(?string $ext): bool
+    {
+        return in_array(
+            strtolower($ext ?? ''),
+            Config::get('projectors.masterfiles.slave_extensions', []),
+            true
+        ); // currently only “pdf”[1]
+    }
+
+    /**
+     * TRUE when any path segment
+     *   • matches an entry in   omit_directories, OR
+     *   • starts  with a prefix omit_directory_prefixes
+     */
     private function shouldSkipPath(string $path): bool
     {
         $segments = explode('/', $path);
