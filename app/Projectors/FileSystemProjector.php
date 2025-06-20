@@ -180,19 +180,26 @@ class FileSystemProjector extends Projector
             : $name;                                 // leave intact[1]
     }
     /**
-   * Turn something like “SOMETHING_core-name_revA.ext” into “core-name”.
-   */
-  private function extractCoreName(string $fileName): ?string
-  {
-      $part = $this->extractPartName($fileName); // e.g. SOMETHING_core-name
-      if ($part === null) {
-          return null;
-      }
+     * Turn something like “SUB-TYPE-1_ PART TWO _revA.pdf” into “PART TWO”.
+     */
+    private function extractCoreName(string $fileName): ?string
+    {
+        // Extract the part before revision or file extension
+        $part = $this->extractPartName($fileName); // e.g. "SUB-TYPE-1_ PART TWO"
 
-      $pos = strpos($part, '_');
-      return $pos === false ? $part : substr($part, $pos + 1);
-  }
+        if ($part === null) {
+            return null;
+        }
 
+        // Find the first underscore and take everything after it
+        $pos = strpos($part, '_');
+        if ($pos === false) {
+            return trim($part);  // Return the whole part if no underscore is found
+        }
+
+        // Trim leading/trailing spaces and return the core name
+        return trim(substr($part, $pos + 1)); // Keep the internal spaces intact
+    }
 
     /**
      * segment(…, 0) == MAIN-TYPE-N
