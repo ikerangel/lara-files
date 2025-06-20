@@ -65,6 +65,7 @@ class FileSystemProjector extends Projector
                 'extension'         => $isDir ? null : ltrim($ext, '.'),
                 'revision'          => $isDir ? null : $this->extractRevision($name),
                 'part_name'         => $isDir ? null : $this->extractPartName($name),
+                'core_name'         => $isDir ? null : $this->extractCoreName($name),
                 'product_main_type' => $this->segment($event->path, 0),
                 'product_sub_type'  => $this->segment($event->path, 1, true),
                 'parent'            => $this->parentFolder($event->path),
@@ -178,6 +179,19 @@ class FileSystemProjector extends Projector
             ? substr($name, 0, -strlen('_' . $rev))  // cut off tail[1]
             : $name;                                 // leave intact[1]
     }
+    /**
+   * Turn something like “SOMETHING_core-name_revA.ext” into “core-name”.
+   */
+  private function extractCoreName(string $fileName): ?string
+  {
+      $part = $this->extractPartName($fileName); // e.g. SOMETHING_core-name
+      if ($part === null) {
+          return null;
+      }
+
+      $pos = strpos($part, '_');
+      return $pos === false ? $part : substr($part, $pos + 1);
+  }
 
 
     /**
