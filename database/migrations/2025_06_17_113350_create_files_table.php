@@ -19,6 +19,7 @@ return new class extends Migration {
             // quick-search helpers
             $table->string('revision')->nullable();     // extracted “…_revX”, “_A”, …
             $table->string('part_name')->nullable();    // name without revision / extension
+            $table->string('core_name')->nullable();    // part_name without prefix (VAS ½''_CIERRE -> CIERRE)
             $table->string('product_main_type')->nullable(); // first-level folder
             $table->string('product_sub_type')->nullable();  // next level (comma-joined if >1)
 

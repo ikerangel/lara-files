@@ -106,7 +106,9 @@ class PartsProjector extends Projector
             ['path' => $file->path],
             [
                 'part_name'         => $file->part_name,
+                'core_name'         => $file->core_name,
                 'parent_path'       => $file->parent_path,
+                'parent'            => $file->parent,
                 'extension'         => $file->extension,
                 'master_path'       => $master?->path,
                 'master_revision'   => $master?->master_revision,
